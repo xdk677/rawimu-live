@@ -1,0 +1,31 @@
+{
+  "_说明": "新增 IMU 型号：复制一组，改名字和参数即可；同名会覆盖内置值。 gyro_lsb 单位 deg/s per LSB，accel_lsb 单位 m/s^2 per LSB， temp_lsb 单位 °C per LSB。axis_map/axis_sign 用于非标准安装（一般不用改）。",
+  "MY_IMU_A": {
+    "gyro_lsb": 1.52587890625e-05,
+    "accel_lsb": 7.62939453125e-06,
+    "temp_lsb": 0.01,
+    "temp_offset": 0.0,
+    "freq": 100,
+    "invert_y": true,
+    "axis_map": [
+      0,
+      1,
+      2
+    ],
+    "axis_sign": [
+      1,
+      1,
+      1
+    ],
+    "note": "示例：32 位定点 16 位小数"
+  },
+  "MY_IMU_B": {
+    "gyro_lsb": 0.001,
+    "accel_lsb": 0.0005,
+    "temp_lsb": 0.00390625,
+    "temp_offset": 25.0,
+    "freq": 125,
+    "invert_y": false,
+    "note": "示例：16 位定标、125 Hz、Y 轴不取反"
+  }
+}

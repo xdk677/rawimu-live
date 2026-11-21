@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# PyInstaller
+build/
+dist/
+dist_dir/
+*.spec
+
+# 运行产物（记录/截图）
+rawimu_[0-9][0-9][0-9][0-9]*.csv
+*.log
+
+# 本地配置（示例用 *.example.json，实际配置不要提交）
+imu_models.json
+formats.json
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

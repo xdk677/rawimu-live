@@ -1,0 +1,5 @@
+# 串口读取（必需）
+pyserial>=3.4
+
+# 仅 --snapshot 截图功能需要；不装则自动退回手写 BMP
+Pillow>=7.0 ; python_version >= "3.7"

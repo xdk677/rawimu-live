@@ -1,0 +1,75 @@
+{
+  "_说明": "新增 IMU 报文格式：复制一组，改 id / header_len / body_len / 偏移即可，不用改代码。id 用十进制（0x010C=268）。header_len 28=长头、12=短头。acc/gyr 的 order 是报文里的物理顺序，如 [\"z\",\"y\",\"x\"]。类型支持 u8/i8/u16/i16/u32/i32/f32/f64/i32x3。",
+  "RAWIMUA": {
+    "name": "RAWIMUA",
+    "id": 269,
+    "header_len": 28,
+    "body_len": 40,
+    "week": {
+      "off": 0,
+      "type": "u16"
+    },
+    "sow": {
+      "off": 2,
+      "type": "u32"
+    },
+    "status": {
+      "off": 6,
+      "type": "u32"
+    },
+    "acc": {
+      "off": 10,
+      "order": [
+        "z",
+        "y",
+        "x"
+      ]
+    },
+    "gyr": {
+      "off": 22,
+      "order": [
+        "z",
+        "y",
+        "x"
+      ]
+    },
+    "enabled": false,
+    "note": "示例：RAWIMUA(0x010D)，偏移按手册核对后把 enabled 改成 true"
+  },
+  "RAWIMUSB": {
+    "name": "RAWIMUSB",
+    "id": 270,
+    "header_len": 28,
+    "body_len": 40,
+    "week": {
+      "off": 0,
+      "type": "u16"
+    },
+    "sow": {
+      "off": 2,
+      "type": "u32"
+    },
+    "status": {
+      "off": 6,
+      "type": "u32"
+    },
+    "acc": {
+      "off": 10,
+      "order": [
+        "z",
+        "y",
+        "x"
+      ]
+    },
+    "gyr": {
+      "off": 22,
+      "order": [
+        "z",
+        "y",
+        "x"
+      ]
+    },
+    "enabled": false,
+    "note": "示例：RAWIMUSB(0x010E)，偏移按手册核对后把 enabled 改成 true"
+  }
+}
