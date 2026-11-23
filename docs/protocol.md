@@ -89,3 +89,24 @@
 
 - 用数据体的 `Seconds_into_Week`（double）做帧间差分，异常时退回 `1/freq`
 - 头部的 `ms` 只用于显示/校验；`Week(u32)` 在启动阶段可能不可信，时间基准用头部 week(u16)
+
+## 6. ASCII 日志（#RAWIMUA / #RAWIMUSB）
+
+部分设备/配置直接输出 ASCII 形式（实测 100 Hz，921600 波特率）：
+
+```
+#RAWIMUA,COM3,0,98.3,FINESTEERING,1356,82.500,00000000,0399,816;2446,93852.015821000,11dd0080,1303471,-6343,-6566,6013,-3722,4165*0f02cca6
+```
+
+| 段 | 内容 |
+|---|---|
+| 日志头 | `#RAWIMUA, port, seq, idle%, time_status, week, seconds, receiver_status, reserved, sw_version` |
+| `;` 之后的数据体 | `week, seconds, imu_status(hex), acc_z, acc_y, acc_x, gyr_z, gyr_y, gyr_x` |
+| 末尾 | `*` + 8 位十六进制 CRC32 |
+
+- **CRC**：覆盖「去掉前导 `#` 之后」的全部字符，算法与二进制帧相同（初值 0、末尾不取反）
+- **定点**：与二进制完全一致（陀螺 1/65536 deg/s、加计 0.5/65536 m/s²）
+- 数据体的 `week`/`seconds` 与日志头里的同名字段一致，解析用数据体那份
+- 同一条流里通常还有 `#INSPVAXA`、`$GPGGA`、`#BESTGNSSPOSA` 等其它日志，工具只识别注册过的格式，其余仅统计（`--selftest` 会列出未识别前缀）
+
+在 `formats.json` 里新增 ASCII 格式时用 `kind: "ascii"` + `prefix` + 下标 `idx`，见 `examples/formats.example.json`。

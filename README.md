@@ -10,7 +10,7 @@
 
 - **串口实时**：波特率可配（默认 460800），断线/占用有明确提示
 - **报文解析**：自动找 `AA 44 12/13` 同步头、长度字段、CRC32 校验（设备用的是“初值 0、末尾不取反”的非标准 CRC）
-- **两种 IMU 报文**：`RAWIMU (0x010C)`、`RAWIMUSX (0x05B6)`；新增格式只需改 JSON
+- **四种 IMU 报文**：二进制 `RAWIMU (0x010C)`、`RAWIMUSX (0x05B6)`；ASCII `#RAWIMUA`、`#RAWIMUSB`；新增格式只需改 JSON
 - **姿态解算**：陀螺四元数积分（主体）+ 可选重力慢修正（互补滤波，只修 roll/pitch，**永不修 yaw**）
 - **自动标定**：开机静止段自动估陀螺零偏、并把静止 |a| 归一到 9.80665
 - **三维显示**：飞机模型 + 罗盘台 + 航向指针 + 地面投影（全部自绘，随姿态实时转动）
@@ -63,10 +63,22 @@ build_exe.bat
 
 帧格式、字段偏移与量纲换算见 [docs/protocol.md](docs/protocol.md)。要点：
 
+**二进制（RAWIMU / RAWIMUSX）**
+
 - 帧：`AA 44 12`(长头 28B) / `AA 44 13`(短头 12B) + 体 + 4B CRC
 - 体（40B）：`week | seconds_into_week(f64) | imu_status(u32) | Z/Y/X 加速度(i32×3) | Z/Y/X 角速度(i32×3)`
 - 定点：陀螺 **1 LSB = 1/65536 deg/s**，加计 **1 LSB = 0.5/65536 m/s²**（32 位定点、16 位小数）
 - `IMU_Status`：高 16 位温度，低 8 位采样计数，8–15 位状态字节
+
+**ASCII（#RAWIMUA / #RAWIMUSB）**
+
+```
+#RAWIMUA,COM3,0,98.3,FINESTEERING,1356,82.500,00000000,0399,816;2446,93852.015821,11dd0080,1303471,-6343,-6566,6013,-3722,4165*0f02cca6
+└──────────── 日志头（逗号分隔）────────────┘ └──────────── 数据体 ────────────┘ └ CRC ┘
+```
+- 分号后：`week, seconds, imu_status(hex), acc_z, acc_y, acc_x, gyr_z, gyr_y, gyr_x`
+- 末尾 `*crc32` 覆盖的是**去掉前导 `#` 之后**的内容（已按此校验）
+- 定点与二进制完全相同，所以同一个 `imu_models.json` 通用
 
 ## 扩展 IMU 型号 / 报文格式
 
@@ -83,11 +95,11 @@ build_exe.bat
 }
 ```
 
-新增报文格式同理（`formats.json`），字段表驱动：
+新增**二进制**报文格式（`formats.json`），字段表驱动：
 
 ```json
 {
-  "RAWIMUA": {
+  "RAWIMUA_BIN": {
     "id": 269, "header_len": 28, "body_len": 40, "enabled": false,
     "week":  {"off": 0,  "type": "u16"},
     "sow":   {"off": 2,  "type": "u32"},
@@ -98,11 +110,25 @@ build_exe.bat
 }
 ```
 
-- 类型：`u8/i8/u16/i16/u32/i32/f32/f64/i32x3`
+新增 **ASCII** 格式：
+
+```json
+{
+  "MY_ASCII": {
+    "kind": "ascii", "prefix": "#RAWIMUA",
+    "week": {"idx": 0}, "sow": {"idx": 1}, "status": {"idx": 2},
+    "acc": {"idx": [3,4,5], "order": ["z","y","x"]},
+    "gyr": {"idx": [6,7,8], "order": ["z","y","x"]}
+  }
+}
+```
+
+- 二进制类型：`u8/i8/u16/i16/u32/i32/f32/f64/i32x3`；ASCII 用分号后的下标 `idx`
 - `order`：报文里的物理顺序
-- 未识别报文：`--selftest --dump-unknown` 会打印 ID、头长、体长和前 56 字节 hex，照着填偏移即可
+- 未识别报文：`--selftest --dump-unknown` 会打印 ID/头长/体长/前 56 字节 hex，ASCII 会列出未识别前缀，照着填即可
 
 内置型号：`M1633 / B240 / B240_16BIT / B200 / X2_2`。
+内置格式：`RAWIMU`、`RAWIMUSX`（二进制）、`RAWIMUA`、`RAWIMUSB`（ASCII）。
 
 ## 验证
 
@@ -121,12 +147,23 @@ python src/rawimu_live.py --selftest --replay examples/rawimu_test.dat --truth e
 `examples/rawimu_test.dat` 是 20 s 已知姿态（roll±20°、pitch±10°、yaw 30°/s）的合成数据，
 `rawimu_truth.csv` 是对应真值，用于回归。
 
+ASCII 报文用实采数据回归（8 s，`#RAWIMUA`，来自 COM50 @921600）：
+
+```bash
+python src/rawimu_live.py --selftest --replay examples/rawimua_ascii.dat
+# 二进制帧 0（CRC错 0）  ASCII 行 1778  IMU 帧 797
+# 报文格式统计: RAWIMUA×797   ASCII 行 1778（CRC错 0）
+# 时长 8.0 s  平均帧间隔 10.000 ms  温度 45.75 C  平均|a| 9.950 m/s2
+```
+
+![ASCII RAWIMUA 实时](docs/images/ui_python_ascii.png)
+
 ## 目录结构
 
 ```
 rawimu-live/
 ├─ src/rawimu_live.py          主程序（单文件）
-├─ examples/                   回归数据与配置模板
+├─ examples/                   回归数据（二进制 + ASCII）与配置模板
 ├─ docs/protocol.md            帧格式与量纲
 ├─ docs/images/                界面截图
 ├─ matlab/                     MATLAB 等价实现

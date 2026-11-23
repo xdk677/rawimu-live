@@ -1,5 +1,5 @@
 {
-  "_说明": "新增 IMU 报文格式：复制一组，改 id / header_len / body_len / 偏移即可，不用改代码。id 用十进制（0x010C=268）。header_len 28=长头、12=短头。acc/gyr 的 order 是报文里的物理顺序，如 [\"z\",\"y\",\"x\"]。类型支持 u8/i8/u16/i16/u32/i32/f32/f64/i32x3。",
+  "_说明": "新增 IMU 报文格式：二进制用 id/header_len/body_len/偏移；ASCII 用 kind=ascii + prefix + idx。 两种都不用改代码。类型支持 u8/i8/u16/i16/u32/i32/f32/f64/i32x3。",
   "RAWIMUA": {
     "name": "RAWIMUA",
     "id": 269,
@@ -71,5 +71,45 @@
     },
     "enabled": false,
     "note": "示例：RAWIMUSB(0x010E)，偏移按手册核对后把 enabled 改成 true"
+  },
+  "RAWIMUA_ASCII_EXAMPLE": {
+    "name": "RAWIMUA_ASCII_EXAMPLE",
+    "kind": "ascii",
+    "prefix": "#RAWIMUA",
+    "week": {
+      "idx": 0
+    },
+    "sow": {
+      "idx": 1
+    },
+    "status": {
+      "idx": 2
+    },
+    "acc": {
+      "idx": [
+        3,
+        4,
+        5
+      ],
+      "order": [
+        "z",
+        "y",
+        "x"
+      ]
+    },
+    "gyr": {
+      "idx": [
+        6,
+        7,
+        8
+      ],
+      "order": [
+        "z",
+        "y",
+        "x"
+      ]
+    },
+    "enabled": false,
+    "note": "ASCII 示例：字段在分号之后，idx 从 0 数；内置已含 #RAWIMUA/#RAWIMUSB，这里只是写法参考"
   }
 }

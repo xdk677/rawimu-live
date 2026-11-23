@@ -199,6 +199,9 @@ class FrameParser(object):
         self.id_counts = {}
         self.fmt_counts = {}
         self.unknown = []          # [(msg_id, hlen, body_len, hex_head)] 最多 8 条
+        self.n_text = 0            # ASCII 行数
+        self.text_unknown = []     # 未识别 ASCII 前缀，最多 8 个
+        self.n_text_crc_bad = 0
 
     def feed(self, chunk):
         self.buf += chunk
@@ -207,7 +210,21 @@ class FrameParser(object):
         n = len(buf)
         i = 0
         while i <= n - 16:
-            if buf[i] != 0xAA or buf[i + 1] != 0x44:
+            b0 = buf[i]
+            # ---- ASCII 日志行（#RAWIMUA / $GPGGA ...）----
+            if b0 in (0x23, 0x24):                       # '#' / '$'
+                nl = buf.find(b"\n", i)
+                if nl < 0:
+                    if n - i > 8192:                     # 超长行，防卡死
+                        i += 1
+                        self.n_drop += 1
+                        continue
+                    break
+                line = bytes(buf[i:nl]).strip()
+                i = nl + 1
+                self._handle_line(line)
+                continue
+            if b0 != 0xAA or buf[i + 1] != 0x44:
                 i += 1
                 self.n_drop += 1
                 continue
@@ -263,6 +280,45 @@ class FrameParser(object):
         if any(u[0] == msg_id for u in self.unknown):
             return
         self.unknown.append((msg_id, hlen, ln, bytes(body[:56]).hex()))
+
+    def _handle_line(self, line):
+        """处理一条 ASCII 日志行"""
+        self.n_text += 1
+        if not line:
+            return
+        try:
+            text = line.decode("ascii", "replace").strip()
+        except Exception:
+            return
+        if not text or text[0] not in "#$":
+            return
+        # 去掉末尾的 *crc（8 位十六进制）；CRC 覆盖的是去掉前导 '#' 之后的内容
+        star = text.rfind("*")
+        payload = text
+        crc_rx = None
+        if star > 0 and len(text) - star == 9:
+            payload = text[:star]
+            try:
+                crc_rx = int(text[star + 1:], 16)
+            except ValueError:
+                crc_rx = None
+        prefix = payload.split(",", 1)[0]
+        spec = self.reg.by_prefix.get(prefix)
+        if spec is not None and crc_rx is not None:
+            try:
+                if crc32_raw(payload[1:].encode("ascii", "ignore")) != crc_rx:
+                    self.n_text_crc_bad += 1
+            except Exception:
+                pass
+        if spec is None:
+            if len(self.text_unknown) < 8 and prefix not in self.text_unknown:
+                self.text_unknown.append(prefix)
+            return
+        self.fmt_counts[spec["name"]] = self.fmt_counts.get(spec["name"], 0) + 1
+        try:
+            self.on_frame(spec, payload)
+        except Exception:
+            pass
 
 
 def fmt_text(counts):
@@ -352,6 +408,33 @@ def build_decoder(spec):
     return decode
 
 
+def build_ascii_decoder(spec):
+    """ASCII 日志（如 #RAWIMUA,COM3,...;week,sec,status,az,ay,ax,gz,gy,gx*crc）
+
+    字段用 "idx" 指定在“分号之后”数据体里的下标；status 按 16 进制解析。
+    """
+    def decode(text):
+        body = text.split(";", 1)[1] if ";" in text else ""
+        vals = [s.strip() for s in body.split(",")]
+        d = {"name": spec.get("name", "?")}
+        try:
+            d["week"] = int(vals[spec["week"]["idx"]]) if spec.get("week") else 0
+            d["sow"] = float(vals[spec["sow"]["idx"]])
+            d["status"] = int(vals[spec["status"]["idx"]], 16) if spec.get("status") else 0
+        except (IndexError, ValueError):
+            raise ValueError("ASCII 字段不足或被截断")
+        for key in ("acc", "gyr"):
+            f = spec.get(key)
+            if f:
+                idx = f["idx"]
+                raw = [float(vals[i]) for i in idx]
+                d[key] = _order_xyz(raw, f.get("order", ["x", "y", "z"]))
+        for key in ("imu_info", "imu_type"):
+            d[key] = None
+        return d
+    return decode
+
+
 FORMAT_SPECS = {
     "RAWIMU": {
         "name": "RAWIMU", "id": 0x010C, "header_len": 28, "body_len": 40,
@@ -372,6 +455,21 @@ FORMAT_SPECS = {
         "acc": {"off": 16, "order": ["z", "y", "x"]},
         "gyr": {"off": 28, "order": ["z", "y", "x"]},
         "note": "NovAtel/Bynav RAWIMUSX：短头 12B + 体 40B",
+    },
+    # ---- ASCII 日志（# 开头、分号后是数据体）----
+    "RAWIMUA": {
+        "name": "RAWIMUA", "kind": "ascii", "prefix": "#RAWIMUA",
+        "week": {"idx": 0}, "sow": {"idx": 1}, "status": {"idx": 2},
+        "acc": {"idx": [3, 4, 5], "order": ["z", "y", "x"]},
+        "gyr": {"idx": [6, 7, 8], "order": ["z", "y", "x"]},
+        "note": "ASCII RAWIMUA：week,sec,status,az,ay,ax,gz,gy,gx（分号后）",
+    },
+    "RAWIMUSB": {
+        "name": "RAWIMUSB", "kind": "ascii", "prefix": "#RAWIMUSB",
+        "week": {"idx": 0}, "sow": {"idx": 1}, "status": {"idx": 2},
+        "acc": {"idx": [3, 4, 5], "order": ["z", "y", "x"]},
+        "gyr": {"idx": [6, 7, 8], "order": ["z", "y", "x"]},
+        "note": "ASCII RAWIMUSB：字段顺序同 RAWIMUA（按手册核对）",
     },
 }
 
@@ -404,11 +502,12 @@ FORMATS_TEMPLATE = {
 
 
 class FormatRegistry(object):
-    """报文格式注册表：内置两种 + formats.json 里自定义的"""
+    """报文格式注册表：内置（二进制 + ASCII）+ formats.json 里自定义的"""
 
     def __init__(self, specs=None, json_paths=None):
         self.specs = {}
         self.by_id = {}
+        self.by_prefix = {}
         self.errors = []
         for s in (specs or FORMAT_SPECS).values():
             self.add(s)
@@ -417,19 +516,26 @@ class FormatRegistry(object):
 
     def add(self, spec):
         spec = dict(spec)
-        if "id" not in spec or "sow" not in spec:
-            self.errors.append("格式缺少 id/sow: %r" % (spec.get("name"),))
-            return False
-        spec.setdefault("header_len", 28)
-        spec.setdefault("body_len", 40)
-        spec.setdefault("name", "ID_%04X" % int(spec["id"]))
+        kind = spec.get("kind", "binary")
         try:
-            spec["decode"] = build_decoder(spec)
+            if kind == "ascii":
+                if "prefix" not in spec or "sow" not in spec:
+                    raise ValueError("ASCII 格式需要 prefix/sow")
+                spec["decode"] = build_ascii_decoder(spec)
+                spec.setdefault("name", spec["prefix"])
+                self.by_prefix[spec["prefix"]] = spec
+            else:
+                if "id" not in spec or "sow" not in spec:
+                    raise ValueError("二进制格式需要 id/sow")
+                spec.setdefault("header_len", 28)
+                spec.setdefault("body_len", 40)
+                spec.setdefault("name", "ID_%04X" % (int(spec["id"]) & 0xFFFF))
+                spec["decode"] = build_decoder(spec)
+                self.by_id[int(spec["id"]) & 0xFFFF] = spec
         except Exception as e:
-            self.errors.append("%s 字段表有误: %s" % (spec["name"], e))
+            self.errors.append("%s 字段表有误: %s" % (spec.get("name") or spec.get("prefix"), e))
             return False
         self.specs[spec["name"]] = spec
-        self.by_id[int(spec["id"]) & 0xFFFF] = spec
         return True
 
     def load_json(self, path):
@@ -787,15 +893,19 @@ class ReplayWorker(threading.Thread):
             return
         sess.running = True
         sess.status = "回放 %s" % os.path.basename(self.path)
-        chunk = 4096
+        chunk = 8192
+        t_wall0 = time.time()
         try:
             while sess.running:
                 data = f.read(chunk)
                 if not data:
                     break
                 sess.parser.feed(data)
-                if self.speed and self.speed > 0:
-                    time.sleep(chunk / (72.0 * sess.cfg["freq"] * self.speed))
+                # 按“数据时间”节流：二进制/ASCII 都适用
+                if self.speed and self.speed > 0 and sess.n_imu > 0:
+                    lag = (sess.t_last / self.speed) - (time.time() - t_wall0)
+                    if lag > 0:
+                        time.sleep(min(lag, 0.25))
         except Exception as e:
             sess.error = "回放异常: %s" % e
         finally:
@@ -1183,8 +1293,9 @@ class PlotPanel(object):
             v = k0 * xstep
             xx = L + (v - t0) * sx
             c.create_line(xx, T, xx, T + ph, fill="#f4f6f8", tags="dyn")
-            c.create_text(xx, T + ph + 4, text=("%.0f s" % v), anchor="n", fill="#5a6470",
-                          font=("Consolas", 8), tags="dyn")
+            c.create_text(xx, T + ph + 4,
+                          text=(("%.1f s" if xstep < 1 else "%.0f s") % v),
+                          anchor="n", fill="#5a6470", font=("Consolas", 8), tags="dyn")
             k0 += 1
         c.create_text(L, 8, text="%s (%s)" % (self.title, self.ylabel), anchor="nw",
                       fill="#1d2126", font=("Microsoft YaHei", 10, "bold"), tags="dyn")
@@ -1490,10 +1601,13 @@ def run_selftest(cfg, path, truth=None, dump_unknown=False):
         sess.parser.feed(data[i:i + step])
     dt = time.time() - t0
     t, ch, rollA, pitchA, att, smp = sess.snapshot()
-    print("帧 %d  IMU %d  其它 %d  短头 %d  CRC错 %d  丢弃字节 %d"
-          % (sess.parser.n_frame, sess.n_imu, sess.parser.n_other, sess.parser.n_short,
-             sess.parser.n_crc, sess.parser.n_drop))
-    print("报文格式统计: %s" % fmt_text(sess.parser.fmt_counts))
+    print("二进制帧 %d（其它 %d / 短头 %d / CRC错 %d）  ASCII 行 %d  IMU 帧 %d  丢弃字节 %d"
+          % (sess.parser.n_frame, sess.parser.n_other, sess.parser.n_short,
+             sess.parser.n_crc, sess.parser.n_text, sess.n_imu, sess.parser.n_drop))
+    print("报文格式统计: %s   ASCII 行 %d（CRC错 %d）"
+          % (fmt_text(sess.parser.fmt_counts), sess.parser.n_text, sess.parser.n_text_crc_bad))
+    if sess.parser.text_unknown:
+        print("未识别 ASCII 前缀: %s" % ", ".join(sess.parser.text_unknown))
     if dump_unknown and sess.parser.unknown:
         print("未识别报文样本（照着填 formats.json）：")
         for mid, hlen, ln, hx in sess.parser.unknown:
@@ -1576,10 +1690,14 @@ def main(argv=None):
         return 0
 
     if a.list_formats:
-        print("%-10s %-8s %-6s %-6s %s" % ("名称", "id(hex)", "头长", "体长", "备注"))
+        print("%-12s %-9s %-6s %-6s %s" % ("名称", "标识", "头长", "体长", "备注"))
         for name, s in sorted(formats.specs.items()):
-            print("%-10s 0x%04X   %-6d %-6d %s" % (
-                name, int(s["id"]), s["header_len"], s["body_len"], s.get("note", "")))
+            if s.get("kind") == "ascii":
+                print("%-12s %-9s %-6s %-6s %s" % (
+                    name, "ASCII", "-", "-", s.get("note", "")))
+            else:
+                print("%-12s 0x%04X    %-6d %-6d %s" % (
+                    name, int(s["id"]), s["header_len"], s["body_len"], s.get("note", "")))
         for e in formats.errors:
             print("  [错误]", e)
         return 0
