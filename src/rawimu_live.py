@@ -750,6 +750,7 @@ class Session(object):
         self.temp = float("nan")
         self.acc_norm_sum = 0.0
         self.acc_norm_n = 0
+        self.n_acc_spike = 0
         self.counter_prev = None
         self.counter_steps = {}
         self.stat_bytes = set()
@@ -797,8 +798,11 @@ class Session(object):
             self.t_last = tRel
             self.temp = smp["temp"]
             an = math.sqrt(sum(v * v for v in smp["acc"]))
-            self.acc_norm_sum += an
-            self.acc_norm_n += 1
+            if math.isfinite(an) and an < 100.0:      # 剔除异常帧，避免统计被个别坏点带偏
+                self.acc_norm_sum += an
+                self.acc_norm_n += 1
+            elif math.isfinite(an):
+                self.n_acc_spike += 1
             self.stat_bytes.add(smp["stat_byte"])
             if self.counter_prev is not None:
                 step = (smp["counter"] - self.counter_prev) % 256
