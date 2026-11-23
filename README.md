@@ -127,7 +127,7 @@ build_exe.bat
 - `order`：报文里的物理顺序
 - 未识别报文：`--selftest --dump-unknown` 会打印 ID/头长/体长/前 56 字节 hex，ASCII 会列出未识别前缀，照着填即可
 
-内置型号：`M1633 / M22 / B240 / B240_16BIT / B200 / X2_2`。
+内置型号：`M1633 / M22 / M21`（M22 为 COM50 实机标定值，M21 同系列暂沿用）。
 内置格式：`RAWIMU`、`RAWIMUSX`（二进制）、`RAWIMUA`、`RAWIMUSB`（ASCII）。
 
 ## 验证
