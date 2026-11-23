@@ -75,6 +75,10 @@ IMU_MODELS = {
              "temp_lsb": 1.0 / 200.0, "temp_offset": 50.0, "freq": 100.0},
     "X2_2": {"gyro_lsb": 100.0 / 80.0 / 65536.0, "accel_lsb": G / 4905.0 / 65536.0,
              "temp_lsb": 1.0 / 30.0, "temp_offset": 25.0, "freq": 100.0},
+    # COM50 实机（M22）静止标定：|a| 计数 1304056 @ g=9.80665 -> 7.5201e-6 m/s^2/LSB
+    "M22": {"gyro_lsb": 1.0 / 65536.0, "accel_lsb": 7.520111259e-06,
+            "temp_lsb": 0.01, "temp_offset": 0.0, "freq": 100.0,
+            "note": "M22（COM50 实机标定；陀螺 1/65536 deg/s，加计 7.5201e-6 m/s^2）"},
 }
 IMU_MODEL_FIELDS = ("gyro_lsb", "accel_lsb", "temp_lsb", "temp_offset", "freq",
                     "invert_y", "axis_map", "axis_sign", "note")

@@ -127,7 +127,7 @@ build_exe.bat
 - `order`：报文里的物理顺序
 - 未识别报文：`--selftest --dump-unknown` 会打印 ID/头长/体长/前 56 字节 hex，ASCII 会列出未识别前缀，照着填即可
 
-内置型号：`M1633 / B240 / B240_16BIT / B200 / X2_2`。
+内置型号：`M1633 / M22 / B240 / B240_16BIT / B200 / X2_2`。
 内置格式：`RAWIMU`、`RAWIMUSX`（二进制）、`RAWIMUA`、`RAWIMUSB`（ASCII）。
 
 ## 验证
@@ -156,7 +156,7 @@ python src/rawimu_live.py --selftest --replay examples/rawimua_ascii.dat
 # 时长 8.0 s  平均帧间隔 10.000 ms  温度 45.75 C  平均|a| 9.950 m/s2
 ```
 
-![ASCII RAWIMUA 实时](docs/images/ui_python_ascii.png)
+![ASCII RAWIMUA 实时（M22，COM50）](docs/images/ui_python_m22.png)
 
 ## 目录结构
 
