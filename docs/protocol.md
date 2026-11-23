@@ -1,5 +1,19 @@
 # RAWIMU / RAWIMUSX 帧格式（实测确认）
 
+## GPIMU32 辅助语句
+
+GPIMU独立于下述RAWIMU报文，按上层MATLAB工程 `GNSS_NAV/ins/src/io/read_gpimu.m` 及 `conversion/load_gpimu2imudata.m` 解析，格式依据 `conversion/print_gpimu.m`。支持：
+
+`$GPIMU,imu_time,samples,gx,gy,gz,ax,ay,az,week,sow,r1,r2,r3,r4,r5,type,temp[,extension]*XX`
+
+`XX`为`$`与`*`之间所有ASCII字节的异或，必须为2位十六进制；保留字段内部空格参与校验，字段解析时strip。传感器六轴和temp均为8位十六进制，按signed32解释；GPS周、语句内采样数按十进制，IMU时间和周内秒单位s。扩展字段标记16位模式时不按32位比例猜测。格式错误和XOR错误分别统计，不混作NovAtelCRC错误。
+
+GP采样数为句内聚合数量，允许连续多帧为13或16；不是逐帧递增计数。GP类型/标志不作为RAW的IMU_Status。GPS周有效时采用GPS时间，否则使用IMU时间且不做RAW的GPS历元匹配。
+
+GP32模型标度和轴与 `processing/load_imu_model.m` 一致，IMU_ID_M21=B240，IMU_ID_M22=B240_E7111。角速度在Python显示为deg/s（MATLAB的rad/s标度已除deg2rad因子）。M22 Z陀螺独立比例及反号、温度低16位signed16均保留。完整参数见README的GPIMU节。
+
+这些规则为代码及合成夹具回归核对；未使用当前已不存在的脚本旧桌面录制文件做实测验证。
+
 本文是 `src/rawimu_live.py` 解析时使用的帧结构，参数与 `formats.json` 里的字段表一一对应。
 
 ## 1. 帧结构
@@ -72,6 +86,10 @@
 | bit 16–31 | 温度原始值（**有符号 int16**） |
 
 温度 = `int16(status >> 16) * temp_lsb + temp_offset`。
+
+Python 界面在“IMU 状态分析”直接四格显示：左上为原始状态字，右上为 bit 8–15 的故障电平，左下温度，右下计数器，无子页。原始状态使用十六进制坐标和阶梯线；计数器按 0–255 展示，回绕不等同丢帧。“监控总览”右下直接绘制原始采样时间间隔（ms）和 IMU 计数间隔（仅将正常 255→0 转为 +1），标题保留完整性累计统计。
+
+依据上层工程 `rawimu_status.m` 的逐位定义，StatusByte bit 0–7（原始 u32 bit 8–15）依次命名为 `GyroX / GyroY / GyroZ / AccX / AccY / AccZ / Temp / FUSA`，0 为正常、1 为异常。Python 图中保留对应原始位号，当前异常名称标红，诊断详情列出当前置位项。该命名为本项目的设备约定；温度缩放继续使用 Python 型号配置。
 
 ## 4. 量纲（定点换算）
 
