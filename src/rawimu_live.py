@@ -50,6 +50,8 @@ DEFAULT_CFG = {
     "auto_accel_scale": True,
     "level_tau": 2.0,
     "accel_leveling": True,
+    "fast_align": True,          # 开局静止时直接用重力定 roll/pitch
+    "tau_adaptive": True,        # 误差大时临时加快修正
     "window_s": 30.0,
     "refresh_hz": 20.0,
     "view_az": -125.0,
@@ -610,6 +612,11 @@ class Attitude(object):
     def __init__(self, cfg):
         self.cfg = cfg
         self.q = (1.0, 0.0, 0.0, 0.0)
+        self.align_done = False      # 快速初始对准是否完成
+        self.align_tried = False     # 放弃对准（一直没静止）
+        self.align_acc = [0.0, 0.0, 0.0]
+        self.align_n = 0
+        self.align_t = 0.0
         self.bias = [0.0, 0.0, 0.0]
         self.bias_acc = [0.0, 0.0, 0.0]
         self.bias_n = 0
@@ -672,6 +679,30 @@ class Attitude(object):
         for k in range(3):
             self.ang_acc[k] += w[k] * dt
 
+        # 0) 快速初始对准：静止时直接用重力定 roll/pitch，省掉开机几秒的慢慢收敛
+        if cfg["fast_align"] and not self.align_done and not self.align_tried:
+            an0 = math.sqrt(a[0] ** 2 + a[1] ** 2 + a[2] ** 2)
+            wn0 = math.degrees(math.sqrt(sum(v * v for v in w)))
+            if an0 > 0.1 and abs(an0 - G) < 0.6 and wn0 < 8.0:
+                for k in range(3):
+                    self.align_acc[k] += a[k]
+                self.align_n += 1
+                need = max(5, int(round(0.30 * cfg["freq"])))     # 0.3 s 平均
+                if self.align_n >= need:
+                    m = [v / self.align_n for v in self.align_acc]
+                    ra = math.atan2(m[1], m[2])
+                    pa = math.atan2(-m[0], math.hypot(m[1], m[2]))
+                    self.q = euler_to_quat(ra, pa, 0.0)
+                    self.align_done = True
+                    self.log.append("快速对准 roll %.2f pitch %.2f" %
+                                    (math.degrees(ra), math.degrees(pa)))
+            else:
+                self.align_n = 0
+                self.align_acc = [0.0, 0.0, 0.0]
+                self.align_t += dt
+                if self.align_t > 5.0:          # 一直没静止，放弃对准，退回慢收敛
+                    self.align_tried = True
+
         # 1) 陀螺积分（姿态主体）
         wrad = [math.radians(v) for v in w]
         wn = math.sqrt(sum(v * v for v in wrad))
@@ -708,7 +739,15 @@ class Attitude(object):
             e = cross(gp, gm)
             ang = norm(e)
             if ang > 1e-9:
-                kk = (dt / max(0.05, cfg["level_tau"])) * ang
+                tau = cfg["level_tau"]
+                if cfg["tau_adaptive"]:
+                    # 误差大 → 临时加快（大角度摆动时跟得紧），误差小 → 慢（平滑噪声）
+                    err_deg = math.degrees(math.asin(min(1.0, ang)))
+                    if err_deg > 5.0:
+                        tau *= 0.2
+                    elif err_deg > 1.0:
+                        tau *= 0.5
+                kk = (dt / max(0.05, tau)) * ang
                 ax = (e[0] / ang, e[1] / ang, e[2] / ang)
                 half = -0.5 * kk
                 s = math.sin(half)
@@ -1349,6 +1388,12 @@ class App(object):
                         variable=self.mode_var, command=self.on_mode).pack(side="left", padx=(12, 0))
         ttk.Radiobutton(bar, text="纯陀螺积分", value="gyro",
                         variable=self.mode_var, command=self.on_mode).pack(side="left")
+        tk.Label(bar, text="重力τ", bg="#f2f4f6").pack(side="left", padx=(10, 0))
+        self.tau_var = tk.StringVar(value="%.1f" % cfg["level_tau"])
+        self.tau_box = ttk.Combobox(bar, textvariable=self.tau_var, width=4, state="readonly",
+                                    values=("0.5", "1.0", "2.0", "5.0"))
+        self.tau_box.pack(side="left", padx=(2, 8))
+        self.tau_box.bind("<<ComboboxSelected>>", lambda e: self.on_tau())
         ttk.Button(bar, text="姿态归零", command=self.on_reset).pack(side="left", padx=(12, 2))
         ttk.Button(bar, text="重新标定", command=self.on_recal).pack(side="left", padx=2)
         self.btn_rec = ttk.Button(bar, text="开始记录", command=self.toggle_record)
@@ -1440,6 +1485,13 @@ class App(object):
         if apply_model(self.cfg, self.models, name):
             self.sess.att.reset_calibration()
             self.sess.status = "IMU 型号已切换: %s" % name
+
+    def on_tau(self):
+        """重力修正时间常数：越小跟得越快，越大越平滑"""
+        try:
+            self.cfg["level_tau"] = float(self.tau_var.get())
+        except (TypeError, ValueError):
+            pass
 
     def on_mode(self):
         self.cfg["mode"] = self.mode_var.get()
@@ -1653,6 +1705,7 @@ def main(argv=None):
     ap.add_argument("--speed", type=float)
     ap.add_argument("--imu", default=None, help="IMU 型号名（见 --list-models）")
     ap.add_argument("--mode", choices=("complementary", "gyro"))
+    ap.add_argument("--tau", type=float, help="重力修正时间常数(秒)，越小跟得越快")
     ap.add_argument("--config")
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--truth")
@@ -1719,6 +1772,8 @@ def main(argv=None):
         cfg["baud"] = a.baud
     if a.mode:
         cfg["mode"] = a.mode
+    if a.tau:
+        cfg["level_tau"] = a.tau
     if a.speed:
         cfg["replay_speed"] = a.speed
 
