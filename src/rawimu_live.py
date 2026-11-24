@@ -1535,8 +1535,14 @@ class Scene3D(object):
         self.resize(max(320, self.w), max(300, self.h))
         if cfg.get("renderer", "auto") != "canvas":
             try:
-                from aircraft_gl import DetailedF22View
-                self.gl_view = DetailedF22View(canvas, cfg, on_error=self._gpu_failed)
+                if sys.platform.startswith("darwin"):
+                    from mac_aircraft_gl import MacF22View
+                    self.gl_view = MacF22View(
+                        canvas, cfg, on_error=self._gpu_failed)
+                else:
+                    from aircraft_gl import DetailedF22View
+                    self.gl_view = DetailedF22View(
+                        canvas, cfg, on_error=self._gpu_failed)
                 self.gl_view.place(x=0, y=0, relwidth=1, relheight=1)
             except Exception as exc:
                 self.gpu_error = str(exc)
@@ -1746,6 +1752,8 @@ def clip_points(points, lower, upper):
     """Clip a polyline, including held states already expanded by step_points."""
     if not points or points[-1][0] < lower or points[0][0] > upper:
         return []
+    if points[0][0] >= lower and points[-1][0] <= upper:
+        return points
     times = [point[0] for point in points]
     first, stop = bisect_left(times, lower), bisect_right(times, upper)
     result = list(points[first:stop])

@@ -92,6 +92,12 @@ class PlotNavigation(object):
 
 def clip_polyline(points, xmin, xmax, ymin, ymax):
     """Liang–Barsky clipping, preserving separate excursions and gaps."""
+    if not points:
+        return []
+    # Auto-scaled plots normally fit completely inside the viewport.  Avoid
+    # rebuilding every point pair through the clipping loop in that case.
+    if all(xmin <= x <= xmax and ymin <= y <= ymax for x, y in points):
+        return [points]
     result, current = [], []
     for a, b in zip(points, points[1:]):
         dx, dy = b[0]-a[0], b[1]-a[1]

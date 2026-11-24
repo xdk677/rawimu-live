@@ -1,3 +1,4 @@
+import sys
 import time
 import tkinter as tk
 import unittest
@@ -295,6 +296,8 @@ class GuiTests(unittest.TestCase):
         self.assertLessEqual(len(panel.c.find_all()), count + 10)
 
     def test_screenshot_uses_explicit_window_when_titles_match(self):
+        if not sys.platform.startswith('win'):
+            self.skipTest('PrintWindow and WM frame handles are Windows-only')
         try:
             from PIL import Image
         except ImportError:

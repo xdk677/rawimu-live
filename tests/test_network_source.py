@@ -1,3 +1,4 @@
+import sys
 import socket
 import tempfile
 import threading
@@ -83,9 +84,10 @@ class NetworkSourceTests(unittest.TestCase):
     def test_udp_receives_full_burst_without_small_default_socket_buffer_loss(self):
         worker = self.start('udp')
         data = (ROOT/'examples/rawimu_test.dat').read_bytes()
+        payload_size = 8192 if sys.platform.startswith('darwin') else 18000
         with socket.socket(type=socket.SOCK_DGRAM) as sender:
-            for first in range(0, len(data), 18000):
-                sender.sendto(data[first:first+18000], worker.bound_address)
+            for first in range(0, len(data), payload_size):
+                sender.sendto(data[first:first+payload_size], worker.bound_address)
         self.assertTrue(wait_for(lambda: self.s.n_imu == 2000), str(self.s.n_imu))
         self.assertEqual(self.s.parser.n_bytes, len(data))
 

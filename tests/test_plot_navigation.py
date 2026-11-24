@@ -48,6 +48,12 @@ class NavigationTests(unittest.TestCase):
         self.panel.navigation.reset()
         self.assertEqual(self.panel._bounds, base)
 
+    def test_inside_polyline_skips_expensive_clipping(self):
+        points = [(0., -1.), (1., .5), (2., 1.)]
+        clipped = live.clip_polyline(points, 0., 2., -1., 1.)
+        self.assertEqual(len(clipped), 1)
+        self.assertIs(clipped[0], points)
+
     def test_pan_cursor_and_changed_source(self):
         self.owner.frozen = True
         self.wheel(state=1)  # Shift: horizontal only.

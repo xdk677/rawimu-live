@@ -34,6 +34,13 @@ pip install -r requirements.txt          # 串口、numpy、Pillow、PyOpenGL �
 python src/rawimu_live.py                # 启动后在界面里选端口/波特率 → 打开
 ```
 
+macOS 上无需安装 PyObjC 或额外图形库。程序使用系统 `OpenGL.framework`
+创建离屏 CGL 上下文，将带纹理、深度测试、光照和罗盘的 F-22 渲染到
+Tk 图像；默认 `--renderer auto` 会自动选择这条原生路径。只有 CGL 上下文
+创建失败时才回退到简化 Canvas 模型。
+
+![macOS CGL 原生渲染的 F-22](docs/images/macos_f22_cgl.png)
+
 常用参数：
 
 ```bash
