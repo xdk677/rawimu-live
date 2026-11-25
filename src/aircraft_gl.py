@@ -6,7 +6,14 @@ import time
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from OpenGL import GL, GLU
-from pyopengltk import OpenGLFrame
+
+try:
+    from pyopengltk import OpenGLFrame
+except ImportError:
+    # pyopengltk has no Darwin frame. Keep the shared drawing implementation
+    # importable so MacF22View can render it through a native CGL context.
+    class OpenGLFrame(object):
+        pass
 
 from aircraft_mesh import load_f22
 

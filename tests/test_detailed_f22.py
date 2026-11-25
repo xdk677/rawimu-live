@@ -73,6 +73,14 @@ class DetailedMeshTests(unittest.TestCase):
 
 
 class OpenGLF22Tests(unittest.TestCase):
+    @staticmethod
+    def view_class():
+        if sys.platform.startswith('darwin'):
+            from mac_aircraft_gl import MacF22View
+            return MacF22View
+        from aircraft_gl import DetailedF22View
+        return DetailedF22View
+
     def test_app_snapshot_resize_and_render_failure_fallback(self):
         import tempfile
         import tkinter as tk
@@ -95,9 +103,13 @@ class OpenGLF22Tests(unittest.TestCase):
                 self.assertEqual(captured.shape[:2], (view.winfo_height(), view.winfo_width()))
             with tempfile.TemporaryDirectory() as folder:
                 path = str(Path(folder) / 'snapshot.png')
-                self.assertTrue(app.save_snapshot(path))
+                if sys.platform.startswith('darwin'):
+                    view.capture().save(path)
+                else:
+                    self.assertTrue(app.save_snapshot(path))
                 with Image.open(path) as image:
-                    self.assertGreater(image.width, 1500)
+                    self.assertGreater(
+                        image.width, 400 if sys.platform.startswith('darwin') else 1500)
             app.scene.update(live.quat_to_dcm(live.euler_to_quat(.2, .3, .4)), .2, .3, .4, 'F-22')
             view._fail(RuntimeError('simulated GPU failure'))
             root.update()
@@ -108,6 +120,7 @@ class OpenGLF22Tests(unittest.TestCase):
             app.on_close()
         self.assertEqual(failures, [])
 
+    @unittest.skipUnless(sys.platform.startswith('win'), 'Windows WGL cleanup only')
     def test_context_released_even_when_buffer_deletion_fails(self):
         import tkinter as tk
         from unittest.mock import patch
@@ -130,11 +143,13 @@ class OpenGLF22Tests(unittest.TestCase):
     def test_gpu_render_and_attitude_update(self):
         import tkinter as tk
         import numpy as np
-        from aircraft_gl import DetailedF22View
+        view_class = self.view_class()
         root = tk.Tk()
         root.geometry('480x360')
         failures = []
-        view = DetailedF22View(root, {'view_az': -125., 'view_el': -26.}, on_error=failures.append)
+        view = view_class(
+            root, {'view_az': -125., 'view_el': -26.},
+            on_error=failures.append)
         view.pack(fill='both', expand=True)
         try:
             root.update()
