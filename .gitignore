@@ -4,10 +4,12 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+.vendor/
 
 # PyInstaller
 build/
 dist/
+Recordings/
 dist_dir/
 *.spec
 

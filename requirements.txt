@@ -1,5 +1,8 @@
 # 串口读取（必需）
 pyserial>=3.4
 
-# 仅 --snapshot 截图功能需要；不装则自动退回手写 BMP
+# 高精度 F-22 的纹理、截图与 OpenGL 渲染
 Pillow>=7.0 ; python_version >= "3.7"
+numpy>=1.17
+PyOpenGL==3.1.7
+pyopengltk==0.0.4

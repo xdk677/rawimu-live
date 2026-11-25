@@ -1,0 +1,27 @@
+{
+  "repository": "https://github.com/FGMEMBERS/F-22",
+  "commit": "da046fba441d9fb513b981905bcee80fd61e6706",
+  "license": "GPL-2.0",
+  "author": "Fabrizio Fracaroli / AeroFab; FGUK / FlightGear contributors",
+  "files": [
+    "Models/F-22.ac",
+    "COPYING",
+    "ReadMe.txt",
+    "Models/F-22-Raptor-jsb.xml",
+    "Models/Map__10_Mix.png",
+    "Models/Map__15_Noise.png",
+    "Models/Map__18_Mix.png",
+    "Models/Map__20_Mix.png",
+    "Models/Map__24_Mix.png",
+    "Models/Map__26_Mix.png",
+    "Models/Map__2_Mix.png",
+    "Models/Map__4_Mix.png",
+    "Models/Map__4_Noise.png",
+    "Models/Map__6_Noise.png",
+    "Models/Map__8_Mix.png",
+    "Models/Map__8_Noise.png",
+    "Models/Map__90_Mix.png",
+    "Models/Map__96_Mix.png",
+    "Models/Map__9_Mix.png"
+  ]
+}
